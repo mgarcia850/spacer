@@ -1,0 +1,6 @@
+/spacer
+/bin/
+*.test
+*.out
+spacer-deck.json
+.DS_Store
