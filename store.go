@@ -1,10 +1,14 @@
 package spacer
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -80,4 +84,114 @@ func (d *Deck) All() []*Note {
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
 	return all
+}
+
+var csvColumns = []string{"id", "front", "back", "interval", "ease", "reps", "due"}
+
+// ExportCSV writes the whole deck, including scheduling state, so it can
+// be inspected in a spreadsheet or re-imported elsewhere with ImportCSV.
+func (d *Deck) ExportCSV(w io.Writer) error {
+	cw := csv.NewWriter(w)
+	if err := cw.Write(csvColumns); err != nil {
+		return err
+	}
+	for _, n := range d.All() {
+		record := []string{
+			n.ID,
+			n.Front,
+			n.Back,
+			strconv.FormatFloat(n.Card.Interval, 'f', -1, 64),
+			strconv.FormatFloat(n.Card.EaseFactor, 'f', -1, 64),
+			strconv.Itoa(n.Card.Repetitions),
+			n.Card.Due.Format(time.RFC3339),
+		}
+		if err := cw.Write(record); err != nil {
+			return err
+		}
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+// ImportCSV adds notes from CSV records with a header row naming its
+// columns. "id", "front", and "back" are required; if "interval", "ease",
+// "reps", and "due" are also present (as written by ExportCSV) each note
+// is restored with that scheduling state, otherwise it starts fresh as of
+// now. Rows whose ID already exists in the deck are skipped rather than
+// erroring, so re-running an import to pick up new rows is safe.
+func (d *Deck) ImportCSV(r io.Reader, now time.Time) (added, skipped int, err error) {
+	cr := csv.NewReader(r)
+	cr.FieldsPerRecord = -1
+
+	header, err := cr.Read()
+	if err == io.EOF {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	col := make(map[string]int, len(header))
+	for i, h := range header {
+		col[strings.ToLower(strings.TrimSpace(h))] = i
+	}
+	for _, want := range []string{"id", "front", "back"} {
+		if _, ok := col[want]; !ok {
+			return 0, 0, fmt.Errorf("csv missing required column %q", want)
+		}
+	}
+	hasState := true
+	for _, want := range []string{"interval", "ease", "reps", "due"} {
+		if _, ok := col[want]; !ok {
+			hasState = false
+			break
+		}
+	}
+
+	for {
+		record, err := cr.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return added, skipped, err
+		}
+
+		id := record[col["id"]]
+		if _, exists := d.Notes[id]; exists {
+			skipped++
+			continue
+		}
+
+		note := &Note{ID: id, Front: record[col["front"]], Back: record[col["back"]], Card: NewCard(now)}
+		if hasState {
+			card, err := parseCardCSV(record, col)
+			if err != nil {
+				return added, skipped, fmt.Errorf("row %q: %w", id, err)
+			}
+			note.Card = card
+		}
+		d.Notes[id] = note
+		added++
+	}
+	return added, skipped, nil
+}
+
+func parseCardCSV(record []string, col map[string]int) (Card, error) {
+	interval, err := strconv.ParseFloat(record[col["interval"]], 64)
+	if err != nil {
+		return Card{}, fmt.Errorf("invalid interval: %w", err)
+	}
+	ease, err := strconv.ParseFloat(record[col["ease"]], 64)
+	if err != nil {
+		return Card{}, fmt.Errorf("invalid ease: %w", err)
+	}
+	reps, err := strconv.Atoi(record[col["reps"]])
+	if err != nil {
+		return Card{}, fmt.Errorf("invalid reps: %w", err)
+	}
+	due, err := time.Parse(time.RFC3339, record[col["due"]])
+	if err != nil {
+		return Card{}, fmt.Errorf("invalid due: %w", err)
+	}
+	return Card{Interval: interval, EaseFactor: ease, Repetitions: reps, Due: due}, nil
 }

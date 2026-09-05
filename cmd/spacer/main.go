@@ -21,7 +21,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: spacer <add|review|due|list> ...")
+		return fmt.Errorf("usage: spacer <add|review|due|list|import|export> ...")
 	}
 
 	path := deckPath()
@@ -36,6 +36,10 @@ func run(args []string) error {
 		return cmdDue(path, rest)
 	case "list":
 		return cmdList(path, rest)
+	case "import":
+		return cmdImport(path, rest)
+	case "export":
+		return cmdExport(path, rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -118,4 +122,55 @@ func cmdList(path string, args []string) error {
 		fmt.Printf("%s\t%s\tdue %s\n", n.ID, n.Front, n.Card.Due.Format("2006-01-02"))
 	}
 	return nil
+}
+
+func cmdImport(path string, args []string) error {
+	fs := flag.NewFlagSet("import", flag.ExitOnError)
+	fs.Parse(args)
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: spacer import <file.csv>")
+	}
+
+	f, err := os.Open(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	deck, err := spacer.LoadDeck(path)
+	if err != nil {
+		return err
+	}
+	added, skipped, err := deck.ImportCSV(f, time.Now())
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := deck.Save(path); err != nil {
+		return err
+	}
+	fmt.Printf("imported %d note(s), skipped %d already present\n", added, skipped)
+	return nil
+}
+
+func cmdExport(path string, args []string) error {
+	fs := flag.NewFlagSet("export", flag.ExitOnError)
+	fs.Parse(args)
+
+	deck, err := spacer.LoadDeck(path)
+	if err != nil {
+		return err
+	}
+
+	if fs.NArg() == 0 {
+		return deck.ExportCSV(os.Stdout)
+	}
+	f, err := os.Create(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return deck.ExportCSV(f)
 }

@@ -60,11 +60,32 @@ go build -o spacer ./cmd/spacer
 Deck data lives at `~/.spacer/deck.json` by default; set `SPACER_DECK`
 to point somewhere else.
 
+Bulk add notes from a CSV file with `id,front,back` columns:
+
+```sh
+./spacer import wordlist.csv
+# imported 40 note(s), skipped 2 already present
+```
+
+Rows whose ID is already in the deck are skipped rather than erroring,
+so re-running an import after adding more rows to the file is safe.
+
+`export` writes the whole deck — content and scheduling state — as CSV,
+to a file or to stdout if none is given:
+
+```sh
+./spacer export backup.csv
+./spacer export | wc -l
+```
+
+A file produced by `export` can be fed straight back into `import`
+elsewhere to restore both notes and their review history.
+
 ## Status
 
-Early. The scheduling core and CLI work end to end; see the roadmap
-in the repo for what's missing (bulk import, a `stats` command,
-configurable ease/interval constants).
+Early. The scheduling core, CLI, and CSV import/export work end to
+end; see the roadmap in the repo for what's missing (a `stats`
+command, configurable ease/interval constants).
 
 ## License
 
