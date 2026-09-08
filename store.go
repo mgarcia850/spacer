@@ -20,9 +20,19 @@ type Note struct {
 	Card  Card   `json:"card"`
 }
 
+// ReviewEvent records one graded review. Cards only keep their current
+// scheduling state, so this log is the only place review history (and
+// therefore anything the stats command reports) can be recovered from.
+type ReviewEvent struct {
+	NoteID string    `json:"note_id"`
+	Rating Rating    `json:"rating"`
+	Time   time.Time `json:"time"`
+}
+
 // Deck is a collection of notes, keyed by ID, persisted as one JSON file.
 type Deck struct {
-	Notes map[string]*Note `json:"notes"`
+	Notes   map[string]*Note `json:"notes"`
+	History []ReviewEvent    `json:"history,omitempty"`
 }
 
 func NewDeck() *Deck {
@@ -63,6 +73,18 @@ func (d *Deck) Add(id, front, back string, now time.Time) error {
 	}
 	d.Notes[id] = &Note{ID: id, Front: front, Back: back, Card: NewCard(now)}
 	return nil
+}
+
+// Grade looks up a note, applies a review to its card, and logs the
+// outcome so ComputeStats can report on it later.
+func (d *Deck) Grade(id string, rating Rating, now time.Time) (*Note, error) {
+	note, ok := d.Notes[id]
+	if !ok {
+		return nil, fmt.Errorf("no note %q", id)
+	}
+	note.Card = note.Card.Review(rating, now)
+	d.History = append(d.History, ReviewEvent{NoteID: id, Rating: rating, Time: now})
+	return note, nil
 }
 
 // Due returns notes whose card is due at or before now, earliest first.

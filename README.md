@@ -81,11 +81,29 @@ to a file or to stdout if none is given:
 A file produced by `export` can be fed straight back into `import`
 elsewhere to restore both notes and their review history.
 
+`stats` summarizes the deck: note count, how many are due, and (once
+you've graded at least one review) retention and review volume, based
+on a log of every graded review kept alongside the deck:
+
+```sh
+./spacer stats
+# notes:          42
+# due now:        5
+# reviews logged: 130
+# retention:      87%
+# reviews/day:    4.3
+```
+
+Retention is the share of logged reviews rated something other than
+`again`. Reviews/day averages over the span between the first and
+last logged review, so a deck reviewed only today reports that day's
+count rather than an inflated fraction.
+
 ## Status
 
-Early. The scheduling core, CLI, and CSV import/export work end to
-end; see the roadmap in the repo for what's missing (a `stats`
-command, configurable ease/interval constants).
+Early. The scheduling core, CLI, CSV import/export, and stats work
+end to end; see the roadmap in the repo for what's missing
+(configurable ease/interval constants, undo, multiple decks).
 
 ## License
 

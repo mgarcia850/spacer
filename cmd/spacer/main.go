@@ -21,7 +21,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: spacer <add|review|due|list|import|export> ...")
+		return fmt.Errorf("usage: spacer <add|review|due|list|import|export|stats> ...")
 	}
 
 	path := deckPath()
@@ -40,6 +40,8 @@ func run(args []string) error {
 		return cmdImport(path, rest)
 	case "export":
 		return cmdExport(path, rest)
+	case "stats":
+		return cmdStats(path, rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -91,12 +93,11 @@ func cmdReview(path string, args []string) error {
 	if err != nil {
 		return err
 	}
-	note, ok := deck.Notes[fs.Arg(0)]
-	if !ok {
-		return fmt.Errorf("no note %q", fs.Arg(0))
+	note, err := deck.Grade(fs.Arg(0), rating, time.Now())
+	if err != nil {
+		return err
 	}
 
-	note.Card = note.Card.Review(rating, time.Now())
 	fmt.Printf("%s: next review in %.0f day(s), due %s\n",
 		note.ID, note.Card.Interval, note.Card.Due.Format("2006-01-02"))
 	return deck.Save(path)
@@ -173,4 +174,21 @@ func cmdExport(path string, args []string) error {
 	}
 	defer f.Close()
 	return deck.ExportCSV(f)
+}
+
+func cmdStats(path string, args []string) error {
+	deck, err := spacer.LoadDeck(path)
+	if err != nil {
+		return err
+	}
+	s := deck.ComputeStats(time.Now())
+
+	fmt.Printf("notes:          %d\n", s.TotalNotes)
+	fmt.Printf("due now:        %d\n", s.DueNow)
+	fmt.Printf("reviews logged: %d\n", s.TotalReviews)
+	if s.TotalReviews > 0 {
+		fmt.Printf("retention:      %.0f%%\n", s.Retention*100)
+		fmt.Printf("reviews/day:    %.1f\n", s.ReviewsPerDay)
+	}
+	return nil
 }

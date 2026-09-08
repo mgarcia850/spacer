@@ -73,6 +73,39 @@ func TestImportCSVEmptyInput(t *testing.T) {
 	}
 }
 
+func TestGradeUpdatesCardAndLogsHistory(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	deck := NewDeck()
+	if err := deck.Add("capital-france", "capital of France?", "Paris", now); err != nil {
+		t.Fatal(err)
+	}
+
+	note, err := deck.Grade("capital-france", Good, now)
+	if err != nil {
+		t.Fatalf("Grade: %v", err)
+	}
+	if note.Card.Repetitions != 1 {
+		t.Errorf("Repetitions = %v, want 1", note.Card.Repetitions)
+	}
+	if len(deck.History) != 1 {
+		t.Fatalf("len(History) = %d, want 1", len(deck.History))
+	}
+	got := deck.History[0]
+	if got.NoteID != "capital-france" || got.Rating != Good || !got.Time.Equal(now) {
+		t.Errorf("History[0] = %+v, want {capital-france Good %v}", got, now)
+	}
+}
+
+func TestGradeUnknownNote(t *testing.T) {
+	deck := NewDeck()
+	if _, err := deck.Grade("nope", Good, time.Now()); err == nil {
+		t.Fatal("Grade on unknown note: want error, got nil")
+	}
+	if len(deck.History) != 0 {
+		t.Errorf("len(History) = %d, want 0 after failed grade", len(deck.History))
+	}
+}
+
 func TestExportImportCSVRoundTrip(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	deck := NewDeck()
