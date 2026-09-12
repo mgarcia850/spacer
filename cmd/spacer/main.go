@@ -21,7 +21,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: spacer <add|review|due|list|import|export|stats> ...")
+		return fmt.Errorf("usage: spacer <add|review|due|list|import|export|stats|config> ...")
 	}
 
 	path := deckPath()
@@ -42,6 +42,8 @@ func run(args []string) error {
 		return cmdExport(path, rest)
 	case "stats":
 		return cmdStats(path, rest)
+	case "config":
+		return cmdConfig(path, rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -191,4 +193,54 @@ func cmdStats(path string, args []string) error {
 		fmt.Printf("reviews/day:    %.1f\n", s.ReviewsPerDay)
 	}
 	return nil
+}
+
+// cmdConfig prints the deck's current scheduling parameters, and updates
+// any for which a flag was passed. Flags default to 0, which is never a
+// meaningful value for any of these fields, so a 0 reliably means "leave
+// this one alone".
+func cmdConfig(path string, args []string) error {
+	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	startEase := fs.Float64("start-ease", 0, "ease factor assigned to new cards (default 2.5)")
+	minEase := fs.Float64("min-ease", 0, "floor ease can't drop below (default 1.3)")
+	againPenalty := fs.Float64("again-penalty", 0, "ease reduction on an again rating (default 0.20)")
+	hardPenalty := fs.Float64("hard-penalty", 0, "ease reduction on a hard rating (default 0.15)")
+	hardInterval := fs.Float64("hard-interval", 0, "interval multiplier on a hard rating (default 1.2)")
+	easyBonus := fs.Float64("easy-bonus", 0, "ease increase on an easy rating (default 0.15)")
+	easyInterval := fs.Float64("easy-interval", 0, "interval multiplier on an easy rating (default 1.3)")
+	fs.Parse(args)
+
+	deck, err := spacer.LoadDeck(path)
+	if err != nil {
+		return err
+	}
+
+	changed := false
+	set := func(dst *float64, v float64) {
+		if v != 0 {
+			*dst = v
+			changed = true
+		}
+	}
+	set(&deck.Params.StartEase, *startEase)
+	set(&deck.Params.MinEase, *minEase)
+	set(&deck.Params.AgainEasePenalty, *againPenalty)
+	set(&deck.Params.HardEasePenalty, *hardPenalty)
+	set(&deck.Params.HardIntervalMultiplier, *hardInterval)
+	set(&deck.Params.EasyEaseBonus, *easyBonus)
+	set(&deck.Params.EasyIntervalMultiplier, *easyInterval)
+
+	p := deck.Params
+	fmt.Printf("start-ease:    %v\n", p.StartEase)
+	fmt.Printf("min-ease:      %v\n", p.MinEase)
+	fmt.Printf("again-penalty: %v\n", p.AgainEasePenalty)
+	fmt.Printf("hard-penalty:  %v\n", p.HardEasePenalty)
+	fmt.Printf("hard-interval: %v\n", p.HardIntervalMultiplier)
+	fmt.Printf("easy-bonus:    %v\n", p.EasyEaseBonus)
+	fmt.Printf("easy-interval: %v\n", p.EasyIntervalMultiplier)
+
+	if !changed {
+		return nil
+	}
+	return deck.Save(path)
 }

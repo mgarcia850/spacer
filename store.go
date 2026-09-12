@@ -33,10 +33,11 @@ type ReviewEvent struct {
 type Deck struct {
 	Notes   map[string]*Note `json:"notes"`
 	History []ReviewEvent    `json:"history,omitempty"`
+	Params  Params           `json:"params"`
 }
 
 func NewDeck() *Deck {
-	return &Deck{Notes: make(map[string]*Note)}
+	return &Deck{Notes: make(map[string]*Note), Params: DefaultParams()}
 }
 
 // LoadDeck reads a deck from disk, returning an empty deck if the file
@@ -56,6 +57,11 @@ func LoadDeck(path string) (*Deck, error) {
 	if deck.Notes == nil {
 		deck.Notes = make(map[string]*Note)
 	}
+	// Files written before Params existed unmarshal it as the zero value,
+	// which isn't usable, so fall back to the defaults it used to hardcode.
+	if deck.Params == (Params{}) {
+		deck.Params = DefaultParams()
+	}
 	return deck, nil
 }
 
@@ -71,7 +77,7 @@ func (d *Deck) Add(id, front, back string, now time.Time) error {
 	if _, exists := d.Notes[id]; exists {
 		return fmt.Errorf("note %q already exists", id)
 	}
-	d.Notes[id] = &Note{ID: id, Front: front, Back: back, Card: NewCard(now)}
+	d.Notes[id] = &Note{ID: id, Front: front, Back: back, Card: NewCardWithParams(now, d.Params)}
 	return nil
 }
 
@@ -82,7 +88,7 @@ func (d *Deck) Grade(id string, rating Rating, now time.Time) (*Note, error) {
 	if !ok {
 		return nil, fmt.Errorf("no note %q", id)
 	}
-	note.Card = note.Card.Review(rating, now)
+	note.Card = note.Card.ReviewWithParams(rating, now, d.Params)
 	d.History = append(d.History, ReviewEvent{NoteID: id, Rating: rating, Time: now})
 	return note, nil
 }
@@ -184,7 +190,7 @@ func (d *Deck) ImportCSV(r io.Reader, now time.Time) (added, skipped int, err er
 			continue
 		}
 
-		note := &Note{ID: id, Front: record[col["front"]], Back: record[col["back"]], Card: NewCard(now)}
+		note := &Note{ID: id, Front: record[col["front"]], Back: record[col["back"]], Card: NewCardWithParams(now, d.Params)}
 		if hasState {
 			card, err := parseCardCSV(record, col)
 			if err != nil {

@@ -195,6 +195,58 @@ func TestReviewDoesNotMutateReceiver(t *testing.T) {
 	}
 }
 
+func TestReviewWithParamsUsesCustomConstants(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	params := Params{
+		StartEase:              3.0,
+		MinEase:                1.0,
+		AgainEasePenalty:       0.5,
+		HardEasePenalty:        0.3,
+		HardIntervalMultiplier: 1.5,
+		EasyEaseBonus:          0.4,
+		EasyIntervalMultiplier: 2.0,
+	}
+	c := NewCardWithParams(now, params)
+	if c.EaseFactor != params.StartEase {
+		t.Fatalf("EaseFactor = %v, want %v", c.EaseFactor, params.StartEase)
+	}
+
+	hard := Card{Interval: 10, EaseFactor: 2.0, Repetitions: 3, Due: now}.ReviewWithParams(Hard, now, params)
+	if wantEase := 2.0 - params.HardEasePenalty; hard.EaseFactor != wantEase {
+		t.Errorf("Hard EaseFactor = %v, want %v", hard.EaseFactor, wantEase)
+	}
+	if wantInterval := 10 * params.HardIntervalMultiplier; !almostEqual(hard.Interval, wantInterval) {
+		t.Errorf("Hard Interval = %v, want %v", hard.Interval, wantInterval)
+	}
+
+	easy := Card{Interval: 10, EaseFactor: 2.0, Repetitions: 3, Due: now}.ReviewWithParams(Easy, now, params)
+	wantEase := 2.0 + params.EasyEaseBonus
+	if easy.EaseFactor != wantEase {
+		t.Errorf("Easy EaseFactor = %v, want %v", easy.EaseFactor, wantEase)
+	}
+	if wantInterval := 10 * wantEase * params.EasyIntervalMultiplier; !almostEqual(easy.Interval, wantInterval) {
+		t.Errorf("Easy Interval = %v, want %v", easy.Interval, wantInterval)
+	}
+
+	again := Card{Interval: 10, EaseFactor: params.MinEase + 0.1, Repetitions: 3, Due: now}.ReviewWithParams(Again, now, params)
+	if again.EaseFactor != params.MinEase {
+		t.Errorf("Again EaseFactor = %v, want clamped to %v", again.EaseFactor, params.MinEase)
+	}
+}
+
+func TestReviewMatchesReviewWithDefaultParams(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := Card{Interval: 10, EaseFactor: 2.0, Repetitions: 3, Due: now}
+
+	for _, r := range []Rating{Again, Hard, Good, Easy} {
+		got := c.Review(r, now)
+		want := c.ReviewWithParams(r, now, DefaultParams())
+		if got != want {
+			t.Errorf("Review(%v) = %+v, want %+v", r, got, want)
+		}
+	}
+}
+
 func TestParseRatingRoundTrip(t *testing.T) {
 	for _, r := range []Rating{Again, Hard, Good, Easy} {
 		got, ok := ParseRating(r.String())

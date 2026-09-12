@@ -1,6 +1,8 @@
 package spacer
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +72,44 @@ func TestImportCSVEmptyInput(t *testing.T) {
 	}
 	if added != 0 || skipped != 0 {
 		t.Fatalf("added = %d, skipped = %d, want 0, 0", added, skipped)
+	}
+}
+
+func TestLoadDeckFillsDefaultParamsForFileWithoutThem(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deck.json")
+	old := `{"notes":{}}`
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	deck, err := LoadDeck(path)
+	if err != nil {
+		t.Fatalf("LoadDeck: %v", err)
+	}
+	if deck.Params != DefaultParams() {
+		t.Errorf("Params = %+v, want %+v", deck.Params, DefaultParams())
+	}
+}
+
+func TestDeckParamsControlNewCardsAndReviews(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	deck := NewDeck()
+	deck.Params.StartEase = 3.0
+	deck.Params.AgainEasePenalty = 0.5
+
+	if err := deck.Add("a", "front", "back", now); err != nil {
+		t.Fatal(err)
+	}
+	if got := deck.Notes["a"].Card.EaseFactor; got != 3.0 {
+		t.Errorf("new card EaseFactor = %v, want 3.0 from configured StartEase", got)
+	}
+
+	note, err := deck.Grade("a", Again, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wantEase := 3.0 - 0.5; note.Card.EaseFactor != wantEase {
+		t.Errorf("EaseFactor after again = %v, want %v", note.Card.EaseFactor, wantEase)
 	}
 }
 

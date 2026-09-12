@@ -37,6 +37,12 @@ how the review went.
 `Deck` (in `store.go`) is a thin JSON-backed collection of notes if
 you want persistence without writing your own storage layer.
 
+The ease/interval constants above (starting ease, the minimum ease
+floor, and the penalty/bonus/multiplier applied per rating) are just
+`DefaultParams()`. Pass your own `Params` to `ReviewWithParams` (or
+`NewCardWithParams`) to tune them; a `Deck` carries its own `Params`
+and applies them to every `Add` and `Grade`.
+
 ## CLI
 
 ```sh
@@ -99,11 +105,27 @@ Retention is the share of logged reviews rated something other than
 last logged review, so a deck reviewed only today reports that day's
 count rather than an inflated fraction.
 
+`config` shows the deck's current ease/interval constants, and sets
+any of them you pass a flag for:
+
+```sh
+./spacer config
+# start-ease:    2.5
+# min-ease:      1.3
+# ...
+
+./spacer config -start-ease=2.3 -easy-interval=1.5
+```
+
+Changes only affect reviews graded after that point; cards already
+scheduled keep their existing interval and ease until their next
+review.
+
 ## Status
 
-Early. The scheduling core, CLI, CSV import/export, and stats work
-end to end; see the roadmap in the repo for what's missing
-(configurable ease/interval constants, undo, multiple decks).
+Early. The scheduling core, CLI, CSV import/export, stats, and
+configurable ease/interval constants work end to end; see the
+roadmap in the repo for what's missing (undo, multiple decks).
 
 ## License
 
