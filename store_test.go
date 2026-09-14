@@ -146,6 +146,76 @@ func TestGradeUnknownNote(t *testing.T) {
 	}
 }
 
+func TestUndoRestoresPriorCardStateAndPopsHistory(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	deck := NewDeck()
+	if err := deck.Add("capital-france", "capital of France?", "Paris", now); err != nil {
+		t.Fatal(err)
+	}
+	before := deck.Notes["capital-france"].Card
+
+	if _, err := deck.Grade("capital-france", Good, now); err != nil {
+		t.Fatalf("Grade: %v", err)
+	}
+
+	note, err := deck.Undo()
+	if err != nil {
+		t.Fatalf("Undo: %v", err)
+	}
+	if note.Card != before {
+		t.Errorf("Card after undo = %+v, want %+v", note.Card, before)
+	}
+	if len(deck.History) != 0 {
+		t.Errorf("len(History) = %d, want 0 after undoing the only review", len(deck.History))
+	}
+}
+
+func TestUndoOnlyRevertsMostRecentReview(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	deck := NewDeck()
+	if err := deck.Add("capital-france", "capital of France?", "Paris", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := deck.Grade("capital-france", Good, now); err != nil {
+		t.Fatalf("Grade: %v", err)
+	}
+	afterFirst := deck.Notes["capital-france"].Card
+	if _, err := deck.Grade("capital-france", Good, now); err != nil {
+		t.Fatalf("Grade: %v", err)
+	}
+
+	note, err := deck.Undo()
+	if err != nil {
+		t.Fatalf("Undo: %v", err)
+	}
+	if note.Card != afterFirst {
+		t.Errorf("Card after undo = %+v, want %+v (state after first review)", note.Card, afterFirst)
+	}
+	if len(deck.History) != 1 {
+		t.Errorf("len(History) = %d, want 1 after undoing one of two reviews", len(deck.History))
+	}
+}
+
+func TestUndoWithNoHistory(t *testing.T) {
+	deck := NewDeck()
+	if _, err := deck.Undo(); err == nil {
+		t.Fatal("Undo with empty history: want error, got nil")
+	}
+}
+
+func TestUndoOnReviewLoggedBeforePrevCardExisted(t *testing.T) {
+	deck := NewDeck()
+	deck.Notes["capital-france"] = &Note{ID: "capital-france", Card: NewCard(time.Now())}
+	deck.History = append(deck.History, ReviewEvent{NoteID: "capital-france", Rating: Good, Time: time.Now()})
+
+	if _, err := deck.Undo(); err == nil {
+		t.Fatal("Undo on pre-PrevCard history entry: want error, got nil")
+	}
+	if len(deck.History) != 1 {
+		t.Errorf("len(History) = %d, want 1 (failed undo shouldn't pop history)", len(deck.History))
+	}
+}
+
 func TestExportImportCSVRoundTrip(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	deck := NewDeck()

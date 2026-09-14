@@ -23,10 +23,13 @@ type Note struct {
 // ReviewEvent records one graded review. Cards only keep their current
 // scheduling state, so this log is the only place review history (and
 // therefore anything the stats command reports) can be recovered from.
+// PrevCard is the card's state immediately before this review, kept so
+// Undo can restore it exactly rather than trying to recompute it.
 type ReviewEvent struct {
-	NoteID string    `json:"note_id"`
-	Rating Rating    `json:"rating"`
-	Time   time.Time `json:"time"`
+	NoteID   string    `json:"note_id"`
+	Rating   Rating    `json:"rating"`
+	Time     time.Time `json:"time"`
+	PrevCard Card      `json:"prev_card"`
 }
 
 // Deck is a collection of notes, keyed by ID, persisted as one JSON file.
@@ -82,14 +85,39 @@ func (d *Deck) Add(id, front, back string, now time.Time) error {
 }
 
 // Grade looks up a note, applies a review to its card, and logs the
-// outcome so ComputeStats can report on it later.
+// outcome so ComputeStats can report on it later and Undo can revert it.
 func (d *Deck) Grade(id string, rating Rating, now time.Time) (*Note, error) {
 	note, ok := d.Notes[id]
 	if !ok {
 		return nil, fmt.Errorf("no note %q", id)
 	}
+	prev := note.Card
 	note.Card = note.Card.ReviewWithParams(rating, now, d.Params)
-	d.History = append(d.History, ReviewEvent{NoteID: id, Rating: rating, Time: now})
+	d.History = append(d.History, ReviewEvent{NoteID: id, Rating: rating, Time: now, PrevCard: prev})
+	return note, nil
+}
+
+// Undo reverts the most recently logged review, restoring its note's card
+// to the state it had beforehand and removing the entry from History so
+// it no longer counts toward stats or a further undo.
+//
+// Review history logged before PrevCard existed has no recorded prior
+// state; PrevCard unmarshals as the zero Card in that case, which is
+// never a real card's state since EaseFactor is always positive.
+func (d *Deck) Undo() (*Note, error) {
+	if len(d.History) == 0 {
+		return nil, fmt.Errorf("no reviews to undo")
+	}
+	last := d.History[len(d.History)-1]
+	note, ok := d.Notes[last.NoteID]
+	if !ok {
+		return nil, fmt.Errorf("note %q from last review no longer exists", last.NoteID)
+	}
+	if last.PrevCard.EaseFactor == 0 {
+		return nil, fmt.Errorf("cannot undo: review predates undo support")
+	}
+	note.Card = last.PrevCard
+	d.History = d.History[:len(d.History)-1]
 	return note, nil
 }
 

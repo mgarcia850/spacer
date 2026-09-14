@@ -21,7 +21,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: spacer <add|review|due|list|import|export|stats|config> ...")
+		return fmt.Errorf("usage: spacer <add|review|undo|due|list|import|export|stats|config> ...")
 	}
 
 	path := deckPath()
@@ -32,6 +32,8 @@ func run(args []string) error {
 		return cmdAdd(path, rest)
 	case "review":
 		return cmdReview(path, rest)
+	case "undo":
+		return cmdUndo(path, rest)
 	case "due":
 		return cmdDue(path, rest)
 	case "list":
@@ -101,6 +103,20 @@ func cmdReview(path string, args []string) error {
 	}
 
 	fmt.Printf("%s: next review in %.0f day(s), due %s\n",
+		note.ID, note.Card.Interval, note.Card.Due.Format("2006-01-02"))
+	return deck.Save(path)
+}
+
+func cmdUndo(path string, args []string) error {
+	deck, err := spacer.LoadDeck(path)
+	if err != nil {
+		return err
+	}
+	note, err := deck.Undo()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s: undone, back to interval %.0f day(s), due %s\n",
 		note.ID, note.Card.Interval, note.Card.Due.Format("2006-01-02"))
 	return deck.Save(path)
 }

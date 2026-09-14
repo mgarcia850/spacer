@@ -58,6 +58,9 @@ go build -o spacer ./cmd/spacer
 ./spacer review capital-france good
 # capital-france: next review in 1 day(s), due 2026-08-26
 
+./spacer undo
+# capital-france: undone, back to interval 0 day(s), due 2026-08-25
+
 ./spacer list
 # capital-france   capital of France?   due 2026-08-26
 # capital-japan    capital of Japan?    due 2026-08-25
@@ -65,6 +68,11 @@ go build -o spacer ./cmd/spacer
 
 Deck data lives at `~/.spacer/deck.json` by default; set `SPACER_DECK`
 to point somewhere else.
+
+`undo` reverts the most recently graded review, restoring the card to
+its state beforehand and dropping that review from the history stats
+are computed from. It only goes back one step; run it again to undo
+the review before that.
 
 Bulk add notes from a CSV file with `id,front,back` columns:
 
@@ -123,9 +131,9 @@ review.
 
 ## Status
 
-Early. The scheduling core, CLI, CSV import/export, stats, and
-configurable ease/interval constants work end to end; see the
-roadmap in the repo for what's missing (undo, multiple decks).
+Early. The scheduling core, CLI, CSV import/export, stats, undo, and
+configurable ease/interval constants work end to end; multiple decks
+are still missing.
 
 ## License
 
