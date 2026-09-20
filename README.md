@@ -66,8 +66,22 @@ go build -o spacer ./cmd/spacer
 # capital-japan    capital of Japan?    due 2026-08-25
 ```
 
-Deck data lives at `~/.spacer/deck.json` by default; set `SPACER_DECK`
-to point somewhere else.
+Every subcommand above takes a `-deck name` flag, so you can keep
+separate decks for separate subjects:
+
+```sh
+./spacer add -deck spanish hola "hola" "hello"
+./spacer due -deck spanish
+
+./spacer decks
+# default   0 note(s)
+# spanish   1 note(s)
+```
+
+Deck files live at `~/.spacer/decks/<name>.json`; a deck used without
+`-deck` is called `default`. Set `SPACER_DECK` to change which name is
+used by default, or `SPACER_DECK_DIR` to store decks somewhere else
+entirely.
 
 `undo` reverts the most recently graded review, restoring the card to
 its state beforehand and dropping that review from the history stats
@@ -131,9 +145,9 @@ review.
 
 ## Status
 
-Early. The scheduling core, CLI, CSV import/export, stats, undo, and
-configurable ease/interval constants work end to end; multiple decks
-are still missing.
+Early. The scheduling core, CLI, CSV import/export, stats, undo,
+configurable ease/interval constants, and multiple decks work end to
+end.
 
 ## License
 

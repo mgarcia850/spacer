@@ -1,5 +1,5 @@
 // Command spacer is a thin CLI over the spacer library: add notes,
-// grade reviews, and see what's due, all backed by one JSON file.
+// grade reviews, and see what's due, all backed by JSON deck files.
 package main
 
 import (
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"spacer"
@@ -21,52 +22,84 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: spacer <add|review|undo|due|list|import|export|stats|config> ...")
+		return fmt.Errorf("usage: spacer <add|review|undo|due|list|import|export|stats|config|decks> ...")
 	}
 
-	path := deckPath()
 	cmd, rest := args[0], args[1:]
-
 	switch cmd {
 	case "add":
-		return cmdAdd(path, rest)
+		return cmdAdd(rest)
 	case "review":
-		return cmdReview(path, rest)
+		return cmdReview(rest)
 	case "undo":
-		return cmdUndo(path, rest)
+		return cmdUndo(rest)
 	case "due":
-		return cmdDue(path, rest)
+		return cmdDue(rest)
 	case "list":
-		return cmdList(path, rest)
+		return cmdList(rest)
 	case "import":
-		return cmdImport(path, rest)
+		return cmdImport(rest)
 	case "export":
-		return cmdExport(path, rest)
+		return cmdExport(rest)
 	case "stats":
-		return cmdStats(path, rest)
+		return cmdStats(rest)
 	case "config":
-		return cmdConfig(path, rest)
+		return cmdConfig(rest)
+	case "decks":
+		return cmdDecks(rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 }
 
-func deckPath() string {
-	if p := os.Getenv("SPACER_DECK"); p != "" {
-		return p
+// deckDir returns the directory holding every deck file. Defaults to
+// ~/.spacer/decks; set SPACER_DECK_DIR to use somewhere else.
+func deckDir() string {
+	if d := os.Getenv("SPACER_DECK_DIR"); d != "" {
+		return d
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "spacer-deck.json"
+		return "spacer-decks"
 	}
-	return filepath.Join(home, ".spacer", "deck.json")
+	return filepath.Join(home, ".spacer", "decks")
 }
 
-func cmdAdd(path string, args []string) error {
+// resolveDeckPath turns a deck name into the file it's stored at. An empty
+// name falls back to $SPACER_DECK, then to "default", so existing single-deck
+// usage keeps working without passing -deck. Names are restricted to a
+// single path element so one can't be used to escape deckDir via "..".
+func resolveDeckPath(name string) (string, error) {
+	if name == "" {
+		name = os.Getenv("SPACER_DECK")
+	}
+	if name == "" {
+		name = "default"
+	}
+	if name != filepath.Base(name) || name == "." || name == ".." {
+		return "", fmt.Errorf("invalid deck name %q", name)
+	}
+	return filepath.Join(deckDir(), name+".json"), nil
+}
+
+// deckFlag registers the -deck flag shared by every subcommand that
+// operates on a single deck. Call the returned func after fs.Parse to get
+// the resolved path.
+func deckFlag(fs *flag.FlagSet) func() (string, error) {
+	name := fs.String("deck", "", `deck name (default "default", or $SPACER_DECK)`)
+	return func() (string, error) { return resolveDeckPath(*name) }
+}
+
+func cmdAdd(args []string) error {
 	fs := flag.NewFlagSet("add", flag.ExitOnError)
+	resolve := deckFlag(fs)
 	fs.Parse(args)
 	if fs.NArg() < 3 {
-		return fmt.Errorf("usage: spacer add <id> <front> <back>")
+		return fmt.Errorf("usage: spacer add [-deck name] <id> <front> <back>")
+	}
+	path, err := resolve()
+	if err != nil {
+		return err
 	}
 
 	deck, err := spacer.LoadDeck(path)
@@ -82,15 +115,20 @@ func cmdAdd(path string, args []string) error {
 	return deck.Save(path)
 }
 
-func cmdReview(path string, args []string) error {
+func cmdReview(args []string) error {
 	fs := flag.NewFlagSet("review", flag.ExitOnError)
+	resolve := deckFlag(fs)
 	fs.Parse(args)
 	if fs.NArg() < 2 {
-		return fmt.Errorf("usage: spacer review <id> <again|hard|good|easy>")
+		return fmt.Errorf("usage: spacer review [-deck name] <id> <again|hard|good|easy>")
 	}
 	rating, ok := spacer.ParseRating(fs.Arg(1))
 	if !ok {
 		return fmt.Errorf("invalid rating %q (want again, hard, good, or easy)", fs.Arg(1))
+	}
+	path, err := resolve()
+	if err != nil {
+		return err
 	}
 
 	deck, err := spacer.LoadDeck(path)
@@ -107,7 +145,15 @@ func cmdReview(path string, args []string) error {
 	return deck.Save(path)
 }
 
-func cmdUndo(path string, args []string) error {
+func cmdUndo(args []string) error {
+	fs := flag.NewFlagSet("undo", flag.ExitOnError)
+	resolve := deckFlag(fs)
+	fs.Parse(args)
+	path, err := resolve()
+	if err != nil {
+		return err
+	}
+
 	deck, err := spacer.LoadDeck(path)
 	if err != nil {
 		return err
@@ -121,7 +167,15 @@ func cmdUndo(path string, args []string) error {
 	return deck.Save(path)
 }
 
-func cmdDue(path string, args []string) error {
+func cmdDue(args []string) error {
+	fs := flag.NewFlagSet("due", flag.ExitOnError)
+	resolve := deckFlag(fs)
+	fs.Parse(args)
+	path, err := resolve()
+	if err != nil {
+		return err
+	}
+
 	deck, err := spacer.LoadDeck(path)
 	if err != nil {
 		return err
@@ -132,7 +186,15 @@ func cmdDue(path string, args []string) error {
 	return nil
 }
 
-func cmdList(path string, args []string) error {
+func cmdList(args []string) error {
+	fs := flag.NewFlagSet("list", flag.ExitOnError)
+	resolve := deckFlag(fs)
+	fs.Parse(args)
+	path, err := resolve()
+	if err != nil {
+		return err
+	}
+
 	deck, err := spacer.LoadDeck(path)
 	if err != nil {
 		return err
@@ -143,11 +205,16 @@ func cmdList(path string, args []string) error {
 	return nil
 }
 
-func cmdImport(path string, args []string) error {
+func cmdImport(args []string) error {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
+	resolve := deckFlag(fs)
 	fs.Parse(args)
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: spacer import <file.csv>")
+		return fmt.Errorf("usage: spacer import [-deck name] <file.csv>")
+	}
+	path, err := resolve()
+	if err != nil {
+		return err
 	}
 
 	f, err := os.Open(fs.Arg(0))
@@ -174,9 +241,14 @@ func cmdImport(path string, args []string) error {
 	return nil
 }
 
-func cmdExport(path string, args []string) error {
+func cmdExport(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
+	resolve := deckFlag(fs)
 	fs.Parse(args)
+	path, err := resolve()
+	if err != nil {
+		return err
+	}
 
 	deck, err := spacer.LoadDeck(path)
 	if err != nil {
@@ -194,7 +266,15 @@ func cmdExport(path string, args []string) error {
 	return deck.ExportCSV(f)
 }
 
-func cmdStats(path string, args []string) error {
+func cmdStats(args []string) error {
+	fs := flag.NewFlagSet("stats", flag.ExitOnError)
+	resolve := deckFlag(fs)
+	fs.Parse(args)
+	path, err := resolve()
+	if err != nil {
+		return err
+	}
+
 	deck, err := spacer.LoadDeck(path)
 	if err != nil {
 		return err
@@ -215,8 +295,9 @@ func cmdStats(path string, args []string) error {
 // any for which a flag was passed. Flags default to 0, which is never a
 // meaningful value for any of these fields, so a 0 reliably means "leave
 // this one alone".
-func cmdConfig(path string, args []string) error {
+func cmdConfig(args []string) error {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	resolve := deckFlag(fs)
 	startEase := fs.Float64("start-ease", 0, "ease factor assigned to new cards (default 2.5)")
 	minEase := fs.Float64("min-ease", 0, "floor ease can't drop below (default 1.3)")
 	againPenalty := fs.Float64("again-penalty", 0, "ease reduction on an again rating (default 0.20)")
@@ -225,6 +306,10 @@ func cmdConfig(path string, args []string) error {
 	easyBonus := fs.Float64("easy-bonus", 0, "ease increase on an easy rating (default 0.15)")
 	easyInterval := fs.Float64("easy-interval", 0, "interval multiplier on an easy rating (default 1.3)")
 	fs.Parse(args)
+	path, err := resolve()
+	if err != nil {
+		return err
+	}
 
 	deck, err := spacer.LoadDeck(path)
 	if err != nil {
@@ -259,4 +344,38 @@ func cmdConfig(path string, args []string) error {
 		return nil
 	}
 	return deck.Save(path)
+}
+
+// cmdDecks lists every deck found in deckDir, alongside how many notes it
+// holds, so -deck names don't have to be guessed or remembered.
+func cmdDecks(args []string) error {
+	fs := flag.NewFlagSet("decks", flag.ExitOnError)
+	fs.Parse(args)
+
+	dir := deckDir()
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		fmt.Println("no decks yet; spacer add creates one")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		deck, err := spacer.LoadDeck(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s\t%d note(s)\n", strings.TrimSuffix(e.Name(), ".json"), len(deck.Notes))
+		found = true
+	}
+	if !found {
+		fmt.Println("no decks yet; spacer add creates one")
+	}
+	return nil
 }
